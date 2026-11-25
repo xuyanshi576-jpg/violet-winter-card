@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>紫色圣诞树</title>
+<style>
+  html,body{height:100%;margin:0;background:#000}
+  body{display:grid;place-items:center;overflow:hidden}
+  canvas{display:block;width:min(100vw,177.778vh);height:auto;aspect-ratio:16/9}
+</style>
+</head>
+<body>
+<canvas width="1024" height="576" role="img" aria-label="星空里，一颗粉色爱心和紫色粒子圣诞树一起旋转，白色小灯球环绕着树。"></canvas>
+<script>
+'use strict';
+
+const recipient = new URLSearchParams(location.hash.slice(1)).get('to')?.trim().slice(0, 24);
+const canvas = document.querySelector('canvas');
+if (recipient) canvas.setAttribute('aria-label', 'To.' + recipient + '。' + canvas.getAttribute('aria-label'));
+const ctx = canvas.getContext('2d', {alpha: false});
+const W = canvas.width;
+const H = canvas.height;
+const TAU = 2 * Math.PI;
+const centerX = 541;
+const frame = ctx.createImageData(W, H);
+const pixels = new Uint32Array(frame.data.buffer);
+const black = 0xff000000;
+let seed = 77115;
+
+function random() {
+  seed = (Math.imul(1664525, seed) + 1013904223) >>> 0;
+  return seed / 4294967296;
+}
+
+function normal() {
+  return Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(TAU * random());
+}
+
+const palettes = [
+  [85, 49, 168], [135, 91, 230], [178, 137, 255], [202, 173, 255],
+  [223, 199, 255], [235, 221, 255], [135, 146, 213], [184, 196, 245],
+  [216, 99, 194], [250, 128, 223], [255, 176, 234], [255, 218, 245],
+  [220, 223, 255], [255, 250, 255]
+].map(rgb => Uint32Array.from({length: 64}, (_, index) => {
+  const intensity = index / 63;
+  return black | ((rgb[2] * intensity) << 16) |
+    ((rgb[1] * intensity) << 8) | (rgb[0] * intensity);
+}));
+
+function plot(offset, color) {
+  if ((color & 0xffff) >= (pixels[offset] & 0xffff)) pixels[offset] = color;
+}
+
+function point(x, y, tone, light, size) {
+  const ix = x | 0;
+  const iy = y | 0;
+  if (ix < 2 || ix >= W - 2 || iy < 2 || iy >= H - 2) return;
+  const palette = palettes[tone];
+  const level = Math.min(72, (light * 76) | 0);
+  const offset = iy * W + ix;
+  const fx = x - ix;
+  const fy = y - iy;
+  plot(offset, palette[Math.min(63, (level * (1 - .47 * fx) * (1 - .47 * fy)) | 0)]);
+  plot(offset + 1, palette[Math.min(63, (level * (.31 + .59 * fx) * (1 - .52 * fy)) | 0)]);
+  plot(offset + W, palette[Math.min(63, (level * (1 - .52 * fx) * (.31 + .59 * fy)) | 0)]);
+  if (size === 1) {
+    plot(offset + W + 1, palette[(level * (.30 + .5 * fx) * (.30 + .5 * fy)) | 0]);
+    plot(offset - 1, palette[(level * .27) | 0]);
+    plot(offset - W, palette[(level * .24) | 0]);
+  }
+}
+
+const field = [];
+const ground = [];
+const tree = [];
+const heart = [];
+const ring = [];
+const flurries = [];
+
+for (let i = 0; i < 660; i++) {
+  field.push({
+    x: random() * W, y: random() * H, drift: 3 + random() * 11,
+    tone: random() < .62 ? 6 : 7, light: .23 + Math.pow(random(), 2.3) * .90,
+    phase: random() * TAU, bright: random() < .19
+  });
+}
+
+function scatter(points, angle, radius, y, tone, light, bright = false) {
+  points.push({
+    x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, y,
+    tone, light, bright, pulse: (random() * 64) | 0
+  });
+}
+
+// Fine points give the cone volume. The broader, brighter ribbon wraps around it.
+for (let i = 0; i < 8500; i++) {
+  const t = Math.pow(random(), .63);
+  const radius = (4 + 111 * t ** 1.15) * (.44 + .60 * Math.sqrt(random()));
+  scatter(tree, random() * TAU, radius, 74 + 360 * t + normal() * 1.8,
+    1 + ((random() * 4) | 0), .30 + random() * .70, random() < .11);
+}
+
+for (let i = 0; i < 9700; i++) {
+  const t = Math.pow(random(), .95);
+  const radius = 2.5 + 115 * t ** 1.29;
+  const spread = .57 + 2.55 * t;
+  const angle = TAU * (5.4 * t + .3 * t * t) + 1.95;
+  const tone = random() < .16 ? 5 : 2 + ((random() * 3) | 0);
+  scatter(tree, angle + normal() * .027, radius + normal() * spread,
+    75 + 360 * t + normal() * spread, tone, .63 + random() * .55, random() < .41);
+}
+
+for (let i = 0; i < 4800; i++) {
+  const layer = (random() * 6) | 0;
+  const radius = 101 + 28 * layer + normal() * (5.0 + layer * 2);
+  scatter(ground, random() * TAU, radius, 440 + normal() * 3.5,
+    1 + ((random() * 4) | 0), (.25 + random() * .74) * (1 - layer * .052),
+    random() < .16);
+}
+
+for (let i = 0; i < 1100; i++) {
+  const y = random();
+  flurries.push({
+    angle: random() * TAU, radius: 28 + 237 * y + random() * (90 + 145 * y),
+    y, speed: .025 + random() * .025, tone: random() < .35 ? 7 : 2 + ((random() * 3) | 0),
+    light: .31 + random() ** 1.7 * .87, pulse: (random() * 64) | 0,
+    bright: random() < .14
+  });
+}
+
+// A rounded heart has a visible profile through the full turn about the tree axis.
+for (let i = 0; i < 3200; i++) {
+  let x, y, z, surface;
+  do {
+    x = (random() - .5) * 2.4;
+    y = random() * 2.38 - 1.12;
+    z = (random() - .5) * 2.02;
+    const y3 = y * y * y;
+    surface = (x*x + 1.3*z*z + y*y - 1)**3 - (x*x + .52*z*z) * y3;
+  } while (surface > 0 || y > .60 + .96 * Math.hypot(x, z));
+  const tone = 8 + ((random() * 4) | 0);
+  heart.push({x: x * 30, y: 47 - y * 24, z: z * 24, tone,
+    light: .77 + random() * .43, pulse: (random() * 64) | 0, bright: random() < .44});
+}
+
+for (let i = 0; i < 31; i++) {
+  const angle = i * TAU / 31;
+  const radius = 190 + Math.sin(angle * 3) * 4;
+  ring.push({x: Math.cos(angle) * radius, y: 414 + 10 * Math.sin(angle), z: Math.sin(angle) * radius});
+}
+
+const pulse = new Float32Array(64);
+const glow = [];
+for (let y = -12; y <= 12; y++) {
+  for (let x = -12; x <= 12; x++) {
+    const d2 = x * x + y * y;
+    if (d2 <= 144) glow.push({x, y, strength: Math.exp(-d2 / 35)});
+  }
+}
+
+function lamp(x, y, depth, shimmer) {
+  const coreRadius = 1.65 + depth * 1.40;
+  if (x < 14 || x >= W - 14 || y < 14 || y >= H - 14) return;
+  const base = (y | 0) * W + (x | 0);
+  for (const p of glow) {
+    const level = (p.strength * (11 + depth * 10) * shimmer) | 0;
+    plot(base + p.y * W + p.x, palettes[12][level]);
+  }
+  for (let dy = -4; dy <= 4; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
+      const distance = Math.hypot((x | 0) + dx + .5 - x, (y | 0) + dy + .5 - y);
+      const coverage = Math.max(0, Math.min(1, coreRadius + .4 - distance));
+      if (coverage) plot(base + dy * W + dx, palettes[13][(coverage * shimmer * 63) | 0]);
+    }
+  }
+}
+
+function drawCloud(cloud, c, s) {
+  for (const p of cloud) {
+    const x = p.x * c - p.z * s;
+    const z = p.x * s + p.z * c;
+    const zoom = 700 / (700 - z);
+    const py = 280 + (p.y - 280 + z * .17) * zoom;
+    const light = p.light * (1.09 + z * .00185) * pulse[p.pulse];
+    point(centerX + x * zoom, py, p.tone, light, p.bright ? 1 : 0);
+  }
+}
+
+function drawGreeting() {
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#e5d3f5';
+  ctx.font = '500 19px Arial, DejaVu Sans, sans-serif';
+  ctx.fillText('Merry Christmas', 45, 242);
+  ctx.fillStyle = '#b29dc6';
+  ctx.font = '13px Arial, DejaVu Sans, sans-serif';
+  ctx.fillText('647', 46, 264);
+  ctx.fillStyle = '#f0d9ff';
+  ctx.font = '500 27px "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
+  if (recipient) ctx.fillText('To.' + recipient, 44, 310);
+}
+
+function render(time) {
+  pixels.fill(black);
+  const angle = time * .54 - .42;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  for (let i = 0; i < pulse.length; i++) {
+    pulse[i] = .90 + .22 * Math.sin(time * 2.65 + i * TAU / 64);
+  }
+  for (const p of field) {
+    const y = (p.y + time * p.drift) % H;
+    point(p.x + 7 * Math.sin(time * .49 + p.phase), y, p.tone,
+      p.light * (.82 + .35 * Math.sin(time * 1.75 + p.phase)), p.bright ? 1 : 0);
+  }
+  for (const p of flurries) {
+    const progress = (p.y + time * p.speed) % 1;
+    const a = p.angle + time * .24;
+    const z = p.radius * Math.sin(a);
+    const zoom = 870 / (870 - z);
+    const fade = Math.min(progress * 8, (1 - progress) * 8, 1);
+    point(centerX + p.radius * Math.cos(a) * zoom,
+      73 + 477 * progress + z * .13, p.tone, p.light * fade * pulse[p.pulse], p.bright ? 1 : 0);
+  }
+
+  drawCloud(ground, c, s);
+  drawCloud(tree, c, s);
+  drawCloud(heart, c, s);
+
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i];
+    const z = p.x * s + p.z * c;
+    const zoom = 700 / (700 - z);
+    lamp(centerX + (p.x * c - p.z * s) * zoom, 280 + (p.y - 280 + z * .24) * zoom,
+      (z + 194) / 388, .81 + .17 * Math.sin(time * 2.1 - i * .23));
+  }
+
+  ctx.putImageData(frame, 0, 0);
+  drawGreeting();
+}
+
+let startTime;
+function animate(now) {
+  startTime ??= now;
+  render((now - startTime) / 1000);
+  requestAnimationFrame(animate);
+}
+render(0);
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
